@@ -1,0 +1,14 @@
+[Unit]
+Description=KRATTWORKS Multicam Service
+Requires=systemd-networkd.service
+After=systemd-networkd.service
+
+[Service]
+Type=simple
+ExecStart=python3 /root/multicam.py --service
+Restart=always
+RestartSec=3
+TimeoutSec=10
+
+[Install]
+WantedBy=multi-user.target
