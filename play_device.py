@@ -23,7 +23,7 @@ gst_rgb = f"v4l2src name=src device={rgb_cam} do-timestamp=true"\
 
 gst_test = f"videotestsrc ! video/x-raw,width=640,height=480"
 
-imagesink = f"videoconvert ! {clock} ! ximagesink sync=false"
+imagesink = f"videoconvert ! {clock} ! autovideosink sync=false"
 
 
 ############
@@ -48,7 +48,8 @@ udpsrc = "udpsrc port=6666"
 
 rtp_depay_decode = "rtph264depay ! avdec_h264"
 
-os.system(f"{gst} {gst_thr} ! {encode} ! {rtp_pay} ! {udpsink}")
+#os.system(f"{gst} {gst_test} ! {encode} ! {rtp_pay} ! {udpsink}")
+os.system(f"{gst} {gst_test} ! {imagesink}")
 
 #os.system(f"{udpsrc} ! {rtp_depay_decode} ! {imagesink}")
 #os.system(f"{gst_rgb} ! {imagesink}")
