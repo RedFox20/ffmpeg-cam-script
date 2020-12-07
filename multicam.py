@@ -1,32 +1,36 @@
-import os
-import concurrent.futures
+#!/usr/bin/python3
+import os, pathlib, argparse
+import gstutils
 
-def start_stream_h264(video_device, rtp_address, sdp_file):
-    print(f"Starting stream dev={video_device} rtp={rtp_address} sdp={sdp_file}", flush=True)
+#########
+# Example usage:
+# ./multicam.py --src /dev/video0 --udp 192.168.1.4:6666 --sdp=/root/sdp.sdp
+#
+parser = argparse.ArgumentParser()
+parser.add_argument('--src', type=str, help='set the camera source',
+                    default='/dev/v4l/by-id/usb-MACROSILICON_AV_TO_USB2.0_20150130-video-index0')
+parser.add_argument('--udp', type=str, help='udp destination ip:port',
+                    default='192.168.1.4:6666')
+parser.add_argument('--sdp', type=str, help='set the SDP file output path',
+                    default='camera.sdp')
+args = parser.parse_args()
 
-    ffmpeg = "/usr/bin/ffmpeg -nostats -loglevel warning"
+source = args.src
+extra_commands = None
+if 'usb-MACROSILICON_AV_TO_USB2.0_20150130' in source:
+    extra_commands = 'capsfilter caps=image/jpeg,width=640,height=480,framerate=25/1 ! jpegdec'
+elif source == 'videotestsrc':
+    extra_commands = 'video/x-raw,width=640,height=480'
 
-    # -filter:v fps=fps=10 
-    # This encodes the video stream and forwards output to pipe
-    encode = f"{ffmpeg} -y -an -r ntsc -i {video_device} " \
-             f"-flags2 local_header -aspect 1.77 -b:v 2200k " \
-             f"-c:v libx264 -preset ultrafast -pix_fmt yuv420p " \
-             f"-f matroska - "
+gst_command = gstutils.create_h264rtp_command(source, extra_commands)
+print(f'Gstreamer Command: {gst_command}\n')
 
-    # Takes video from input pipe and transfers over RTP
-    transfer = f"{ffmpeg} -i - -vcodec copy -vbsf h264_mp4toannexb -an " \
-               f"-f rtp -sdp_file {sdp_file} \"{rtp_address}?pkt_size=1000\""
+caps = gstutils.get_rtp_caps(gst_command)
+print(f'Caps: {caps}\n')
+sdp_string, camera_sdp = gstutils.generate_sdp_string(caps)
 
-    result = os.system(f"{encode} | {transfer}")
-    print(f"Stopped stream dev={video_device} with result: {result}", flush=True)
-    return result
+print(f"Generated SDP:\n{sdp_string}")
+pathlib.Path(args.sdp).write_text(sdp_string)
 
-def add_stream(executor, video_device, rtp_address, sdp_file):
-    return executor.submit(start_stream_h264, video_device, rtp_address, sdp_file)
-
-with concurrent.futures.ThreadPoolExecutor() as e:
-    tasks = [
-        add_stream(e, "/dev/video0", "rtp://192.168.1.4:6666", "/root/sdp.sdp")
-    ]
-    for t in tasks:
-        t.result()
+host, port = args.udp.split(':')
+gstutils.run_udp_sink(gst_command, host, port)

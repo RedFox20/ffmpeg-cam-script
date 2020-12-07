@@ -5,7 +5,7 @@ After=systemd-networkd.service
 
 [Service]
 Type=simple
-ExecStart=python3 /root/multicam.py --service
+ExecStart=python3 /root/ffmpeg-cam-script/multicam.py --udp 192.168.1.4:6666 --src /dev/v4l/by-id/usb-MACROSILICON_AV_TO_USB2.0_20150130-video-index0 --sdp=/root/sdp.sdp
 Restart=always
 RestartSec=3
 TimeoutSec=10
