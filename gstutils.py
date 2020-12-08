@@ -1,4 +1,4 @@
-import os, sys, re, subprocess, base64
+import os, re, sys, subprocess, base64
 
 def create_h264rtp_command(source, extra_commands=None):
     """
@@ -13,7 +13,7 @@ def create_h264rtp_command(source, extra_commands=None):
 
     vid_src = ''
     if source == 'videotestsrc':
-        vid_src = 'videotestsrc name=src'
+        vid_src = 'videotestsrc name=src pattern=ball'
     elif sys.platform.startswith('linux'):
         vid_src = f'v4l2src name=src device={source} do-timestamp=true'
     elif sys.platform == 'win32':
@@ -22,8 +22,13 @@ def create_h264rtp_command(source, extra_commands=None):
     if extra_commands:
         vid_src = f'{vid_src} ! {extra_commands}'
 
-    encode = "x264enc name=ENC b-adapt=false bitrate=2200 ref=1 "\
-            "speed-preset=superfast tune=zerolatency vbv-buf-capacity=100"
+    # aud=false  We don't need these AccessUnitDelimiters
+    # b-adapt=true Automatically pick B-frame 
+    # byte-stream=true Enable Annex-B
+    # ref=# Number of reference frames
+    # vbv-buf-capacity=100 Size of VBV buffer in milliseconds
+    encode = "x264enc name=ENC aud=false b-adapt=true byte-stream=true ref=1 "\
+             "bitrate=2200 speed-preset=superfast tune=zerolatency vbv-buf-capacity=100"
 
     rtp_pay = "rtph264pay name=RTP pt=96 mtu=1000"
 
@@ -38,11 +43,12 @@ def run_udp_sink(gst_command, host, port):
     return os.system(f"gst-launch-1.0 {gst_command} ! udpsink host={host} port={port}")
 
 
-def _get_caps_keyvals(full_output, caps_key) -> dict:
-    item = re.findall(f"{caps_key}.*$", full_output, re.MULTILINE)[0]
-    item = item[len(caps_key):]
-    caps = dict()
-    for cap in item.split(', '):
+def _get_caps(full_output, caps_key):
+    caps = re.findall(f"{caps_key}.*$", full_output, re.MULTILINE)[0]
+    caps = caps[len(caps_key):]
+    caps_string = caps.replace(' caps = ', '')
+    caps_keyval = dict()
+    for cap in caps.split(', '):
         k,v = cap.split('=', maxsplit=1)
         k = k.strip()
         v = v.strip()
@@ -50,8 +56,8 @@ def _get_caps_keyvals(full_output, caps_key) -> dict:
         elif v.startswith('(string)'): v = v[8:]
         elif v.startswith('(uint)'): v = v[6:]
         #print(f"{k}={v}")
-        caps[k] = v
-    return caps
+        caps_keyval[k] = v
+    return (caps_keyval, caps_string)
 
 
 def get_rtp_caps(gst_command):
@@ -61,8 +67,8 @@ def get_rtp_caps(gst_command):
     """
     prepass_command = f"gst-launch-1.0 -v {gst_command} ! fakesink num-buffers=1"
     output = subprocess.check_output(prepass_command, shell=True).decode('utf-8')
-    caps = _get_caps_keyvals(output, '/GstPipeline:pipeline0/GstRtpH264Pay:RTP.GstPad:src:')
-    return caps
+    #print(output)
+    return _get_caps(output, '/GstPipeline:pipeline0/GstRtpH264Pay:RTP.GstPad:src:')
 
 
 def generate_sdp_string(caps:dict) -> str:
@@ -76,6 +82,10 @@ def generate_sdp_string(caps:dict) -> str:
     prid = caps['profile-level-id'].capitalize()
     encname = caps['encoding-name']
     clockrate = caps['clock-rate']
+
+    # gstreamer outputs an escaped string, so we need to unescape:
+    # "Z2QAHqy0BQHtgLUGAQWlAAADAAEAAAMAPI8WLqA\\=\\,aO88sA\\=\\="
+    sps = sps.strip('"').replace('\\=', '=').replace('\\,', ',')
 
     sdp_string = f"""v=0
 o=- 0 0 IN IP4 127.0.0.1

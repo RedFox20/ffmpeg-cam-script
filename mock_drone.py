@@ -12,11 +12,12 @@ camera_sdp = '<to be generated>'
 
 gst_command = gstutils.create_h264rtp_command('videotestsrc', 'video/x-raw,width=640,height=480')
 print(f'Gstreamer Command: {gst_command}\n')
-caps = gstutils.get_rtp_caps(gst_command)
-print(f'Caps: {caps}\n')
+caps, caps_string = gstutils.get_rtp_caps(gst_command)
+print(f'RTP caps = {caps}\n')
 sdp_string, camera_sdp = gstutils.generate_sdp_string(caps)
 print(f"Generated SDP:\n{sdp_string}")
 pathlib.Path('camera.sdp').write_text(sdp_string)
+pathlib.Path('caps.rtp').write_text(caps_string)
 
 def main():
     registered = False
