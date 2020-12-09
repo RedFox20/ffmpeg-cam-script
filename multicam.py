@@ -15,6 +15,11 @@ parser.add_argument('--sdp', type=str, help='set the SDP file output path',
                     default='camera.sdp')
 args = parser.parse_args()
 
+print("MULTICAM SERVICE", flush=True)
+print(f"  src={args.src}", flush=True)
+print(f"  udp={args.udp}", flush=True)
+print(f"  sdp={args.sdp}", flush=True)
+
 source = args.src
 extra_commands = None
 if 'usb-MACROSILICON_AV_TO_USB2.0_20150130' in source:
@@ -23,13 +28,13 @@ elif source == 'videotestsrc':
     extra_commands = 'video/x-raw,width=640,height=480'
 
 gst_command = gstutils.create_h264rtp_command(source, extra_commands)
-print(f'Gstreamer Command: {gst_command}\n')
+print(f'Gstreamer Command: {gst_command}\n', flush=True)
 
 caps, caps_string = gstutils.get_rtp_caps(gst_command)
-print(f'RTP caps = {caps}\n')
+print(f'RTP caps = {caps}\n', flush=True)
 sdp_string, camera_sdp = gstutils.generate_sdp_string(caps)
 
-print(f"Generated SDP:\n{sdp_string}")
+print(f"Generated SDP:\n{sdp_string}", flush=True)
 pathlib.Path(args.sdp).write_text(sdp_string)
 pathlib.Path('caps.rtp').write_text(caps_string)
 
