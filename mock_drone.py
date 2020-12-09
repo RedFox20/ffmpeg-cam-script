@@ -10,7 +10,8 @@ drone_name = 'Krattowl Mocked Test Feed'
 session_secret = 'RJ9hg0WxVdm8z5ofaAs3wKvQYcOS72FErUGCHBLTuMpDN4q1yliI6bPnXZejkt'
 camera_sdp = '<to be generated>'
 
-gst_command = gstutils.create_h264rtp_command('videotestsrc', 'video/x-raw,width=640,height=480')
+gst_command = gstutils.create_h264rtp_command('videotestsrc',
+                         'video/x-raw,width=640,height=480,framerate=100/1')
 print(f'Gstreamer Command: {gst_command}\n')
 caps, caps_string = gstutils.get_rtp_caps(gst_command)
 print(f'RTP caps = {caps}\n')

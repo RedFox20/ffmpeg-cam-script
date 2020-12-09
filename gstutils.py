@@ -27,7 +27,9 @@ def create_h264rtp_command(source, extra_commands=None):
     # byte-stream=true Enable Annex-B
     # ref=# Number of reference frames
     # vbv-buf-capacity=100 Size of VBV buffer in milliseconds
-    encode = "x264enc name=ENC aud=false b-adapt=true byte-stream=true ref=1 "\
+    # key-int-max=# max distance between IDR frames
+    encode = "x264enc name=ENC aud=false b-adapt=true byte-stream=true "\
+             "key-int-max=5 ref=1 "\
              "bitrate=2200 speed-preset=superfast tune=zerolatency vbv-buf-capacity=100"
 
     rtp_pay = "rtph264pay name=RTP pt=96 mtu=1000"
@@ -43,11 +45,9 @@ def run_udp_sink(gst_command, host, port):
     return os.system(f"gst-launch-1.0 {gst_command} ! udpsink host={host} port={port}")
 
 
-def _get_caps(full_output, caps_key):
+def _set_caps_keyvals(destination:dict, full_output, caps_key):
     caps = re.findall(f"{caps_key}.*$", full_output, re.MULTILINE)[0]
     caps = caps[len(caps_key):]
-    caps_string = caps.replace(' caps = ', '')
-    caps_keyval = dict()
     for cap in caps.split(', '):
         k,v = cap.split('=', maxsplit=1)
         k = k.strip()
@@ -55,9 +55,16 @@ def _get_caps(full_output, caps_key):
         if v.startswith('(int)'): v = v[5:]
         elif v.startswith('(string)'): v = v[8:]
         elif v.startswith('(uint)'): v = v[6:]
+        elif v.startswith('(fraction)'): v = v[10:]
         #print(f"{k}={v}")
-        caps_keyval[k] = v
-    return (caps_keyval, caps_string)
+        destination[k] = v
+
+
+def _get_caps_string(full_output, caps_key):
+    caps = re.findall(f"{caps_key}.*$", full_output, re.MULTILINE)[0]
+    caps = caps[len(caps_key):]
+    caps_string = caps.replace(' caps = ', '')
+    return caps_string
 
 
 def get_rtp_caps(gst_command):
@@ -67,8 +74,12 @@ def get_rtp_caps(gst_command):
     """
     prepass_command = f"gst-launch-1.0 -v {gst_command} ! fakesink num-buffers=1"
     output = subprocess.check_output(prepass_command, shell=True).decode('utf-8')
-    #print(output)
-    return _get_caps(output, '/GstPipeline:pipeline0/GstRtpH264Pay:RTP.GstPad:src:')
+    print(output)
+    caps_keyvals = dict()
+    _set_caps_keyvals(caps_keyvals, output, '/GstPipeline:pipeline0/GstX264Enc:ENC.GstPad:src:')
+    _set_caps_keyvals(caps_keyvals, output, '/GstPipeline:pipeline0/GstRtpH264Pay:RTP.GstPad:src:')
+    caps_string = _get_caps_string(output, '/GstPipeline:pipeline0/GstRtpH264Pay:RTP.GstPad:src:')
+    return (caps_keyvals, caps_string)
 
 
 def generate_sdp_string(caps:dict) -> str:
@@ -82,6 +93,9 @@ def generate_sdp_string(caps:dict) -> str:
     prid = caps['profile-level-id'].capitalize()
     encname = caps['encoding-name']
     clockrate = caps['clock-rate']
+    framerate = caps['a-framerate']
+    width = caps['width']
+    height = caps['height']
 
     # gstreamer outputs an escaped string, so we need to unescape:
     # "Z2QAHqy0BQHtgLUGAQWlAAADAAEAAAMAPI8WLqA\\=\\,aO88sA\\=\\="
@@ -96,6 +110,8 @@ a=tool:libavformat 58.20.100
 m=video 6666 RTP/AVP {pt}
 a=rtpmap:{pt} {encname}/{clockrate}
 a=fmtp:{pt} packetization-mode={pm}; sprop-parameter-sets={sps}; profile-level-id={prid}
+a=framesize:{pt} {width}-{height}
+a=framerate:{framerate}
 """
     sdp_base64_string = base64.b64encode(sdp_string.encode('ascii')).decode('ascii')
     return (sdp_string, sdp_base64_string)
